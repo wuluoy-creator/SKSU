@@ -27,6 +27,11 @@ on:
         required: false
         default: ''
         type: string
+      vfs_probe:
+        description: 'Build the experimental VFS path observation probe'
+        required: false
+        default: false
+        type: boolean
 
 jobs:
   build-kernelsu-ko:
@@ -37,6 +42,12 @@ jobs:
       options: --privileged
 
     steps:
+    - name: Validate VFS probe KMI
+      if: ${{ inputs.vfs_probe && inputs.kmi != 'android16-6.12' }}
+      run: |
+        echo 'The VFS observation probe is only available for android16-6.12.' >&2
+        exit 1
+
     - name: Checkout source code
       uses: actions/checkout@v7
 
@@ -62,6 +73,9 @@ jobs:
         if [ -n "$EXPECTED_HASH" ]; then
           EXTRA_ARGS="$EXTRA_ARGS KSU_EXPECTED_HASH=$EXPECTED_HASH"
         fi
+        if [ "${{ inputs.vfs_probe }}" = "true" ]; then
+          EXTRA_ARGS="$EXTRA_ARGS KSU_VFS_PATH_HIDE_PROBE=1"
+        fi
         if [ "${{ github.event_name }}" = "pull_request" ]; then
           EXTRA_ARGS="$EXTRA_ARGS KSU_IS_PR_BUILD=1"
         fi
@@ -86,10 +100,11 @@ jobs:
     - name: Upload kernelsu.ko artifact
       uses: actions/upload-artifact@v7
       with:
-        name: aarch64-${{ inputs.kmi }}-lkm
+        name: ${{ inputs.vfs_probe && format('probe-aarch64-{0}-lkm', inputs.kmi) || format('aarch64-{0}-lkm', inputs.kmi) }}
         path: /github/workspace/out/aarch64/${{ inputs.kmi }}_kernelsu.ko
 
     - name: Build kernelsu.ko for x64
+      if: ${{ !inputs.vfs_probe }}
       env:
         PACKAGE_NAME: ${{ inputs.package_name }}
         EXPECTED_SIZE: ${{ inputs.expected_size }}
@@ -168,6 +183,7 @@ jobs:
         echo "Size after stripping: $(du -h "$OUT_DIR/$OUTPUT_NAME" | cut -f1)"
         
     - name: Upload x64 kernelsu.ko artifact
+      if: ${{ !inputs.vfs_probe }}
       uses: actions/upload-artifact@v7
       with:
         name: x86_64-${{ inputs.kmi }}-lkm

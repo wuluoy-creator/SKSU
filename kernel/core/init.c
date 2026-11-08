@@ -6,6 +6,7 @@
 #include <linux/sched.h>
 #include <linux/workqueue.h>
 #include <linux/moduleparam.h>
+#include <linux/version.h>
 
 #include "policy/allowlist.h"
 #include "policy/app_profile.h"
@@ -29,6 +30,12 @@
 #include "feature/shell_su_adb_only.h"
 #include "infra/symbol_resolver.h"
 #include "preinit/preinit.h"
+
+#if defined(MODULE) && defined(KSU_VFS_PATH_HIDE_PROBE) && \
+    LINUX_VERSION_CODE >= KERNEL_VERSION(6, 12, 0) && LINUX_VERSION_CODE < KERNEL_VERSION(6, 13, 0)
+#include "feature/vfs_path_hide_probe.h"
+#define KSU_VFS_PROBE_ENABLED 1
+#endif
 
 #if defined(__x86_64__) && !defined(CONFIG_KSU_X86_PATCH_SYSCALL_DISPATCHER)
 #include <asm/cpufeature.h>
@@ -212,11 +219,17 @@ int __init kernelsu_init(void)
     kobject_del(&THIS_MODULE->mkobj.kobj);
 #endif
 #endif
+#ifdef KSU_VFS_PROBE_ENABLED
+    ksu_vfs_path_hide_probe_init();
+#endif
     return 0;
 }
 
 void __exit kernelsu_exit(void)
 {
+#ifdef KSU_VFS_PROBE_ENABLED
+    ksu_vfs_path_hide_probe_exit();
+#endif
     // Phase 1: Stop all hooks first to prevent new callbacks
     ksu_syscall_hook_manager_exit();
 

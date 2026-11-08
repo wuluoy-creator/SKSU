@@ -2,6 +2,16 @@ name: Build LKM for KernelSU
 on:
   workflow_call:
     inputs:
+      kmi:
+        description: 'KMI to build, or all'
+        required: false
+        default: all
+        type: string
+      vfs_probe:
+        description: 'Build the experimental VFS path observation probe'
+        required: false
+        default: false
+        type: boolean
       package_name:
         description: 'package name of manager'
         required: false
@@ -18,8 +28,38 @@ on:
         default: ''
         type: string
   workflow_dispatch:
+    inputs:
+      kmi:
+        description: 'KMI to build'
+        required: true
+        default: all
+        type: choice
+        options:
+          - all
+          - android12-5.10
+          - android13-5.10
+          - android13-5.15
+          - android14-5.15
+          - android14-6.1
+          - android15-6.6
+          - android16-6.12
+          - android17-6.18
+      vfs_probe:
+        description: 'Build the experimental VFS path observation probe'
+        required: false
+        default: false
+        type: boolean
 jobs:
+  invalid-probe-selection:
+    if: ${{ inputs.vfs_probe && inputs.kmi != 'android16-6.12' }}
+    runs-on: ubuntu-latest
+    steps:
+      - run: |
+          echo 'The VFS observation probe is only available for android16-6.12.' >&2
+          exit 1
+
   build-lkm:
+    if: ${{ inputs.kmi == 'all' && !inputs.vfs_probe }}
     strategy:
       matrix:
         kmi:
@@ -37,3 +77,14 @@ jobs:
       package_name: ${{ inputs.package_name || '' }}
       expected_size: ${{ inputs.expected_size || '' }}
       expected_hash: ${{ inputs.expected_hash || '' }}
+      vfs_probe: ${{ inputs.vfs_probe == true }}
+
+  build-one-lkm:
+    if: ${{ inputs.kmi != 'all' && (!inputs.vfs_probe || inputs.kmi == 'android16-6.12') }}
+    uses: ./.github/workflows/ddk-lkm.yml
+    with:
+      kmi: ${{ inputs.kmi }}
+      package_name: ${{ inputs.package_name || '' }}
+      expected_size: ${{ inputs.expected_size || '' }}
+      expected_hash: ${{ inputs.expected_hash || '' }}
+      vfs_probe: ${{ inputs.vfs_probe == true }}
